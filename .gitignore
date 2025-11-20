@@ -1,0 +1,12 @@
+# secrets & local env
+.env
+.devcontainer/local.env
+*.key
+.DS_Store
+
+# local state
+.venv/
+.idea/
+.vscode/
+.workers/
+uvicorn.log

@@ -1,0 +1,58 @@
+{
+  "name": "Ideation Beads Workspace",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {}
+  },
+  "remoteUser": "vscode",
+  "runArgs": [
+    "--cap-drop=ALL",
+    "--security-opt=no-new-privileges",
+    "--pids-limit=512",
+    "--memory=4g",
+    "--cpus=2",
+    "--network",
+    "bridge",
+    "--read-only",
+    "--tmpfs",
+    "/tmp:exec",
+    "--mount",
+    "type=tmpfs,destination=/run",
+    "--mount",
+    "type=tmpfs,destination=/var/tmp",
+    "--mount",
+    "type=tmpfs,destination=/var/devcontainer",
+    "--mount",
+    "type=tmpfs,destination=/var/lib/apt",
+    "--mount",
+    "type=tmpfs,destination=/var/cache/apt",
+    "--tmpfs",
+    "/home/vscode:uid=1000,gid=1000,mode=1777,exec",
+    "--mount",
+    "type=bind,src=${localEnv:HOME}/.secrets/openai.key,dst=/run/secrets/openai.key,ro",
+    "--mount",
+    "type=bind,src=${localEnv:HOME}/.secrets/anthropic.key,dst=/run/secrets/anthropic.key,ro",
+    "--mount",
+    "type=bind,src=${localEnv:HOME}/.secrets/gemini.key,dst=/run/secrets/gemini.key,ro",
+    "--mount",
+    "type=bind,src=${localEnv:HOME}/.secrets/openrouter.key,dst=/run/secrets/openrouter.key,ro"
+  ],
+  "workspaceMount": "type=bind,source=${localWorkspaceFolder},target=/workspaces/${localWorkspaceFolderBasename},consistency=delegated",
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+  "postCreateCommand": "bash .devcontainer/run-setup-as-user.sh",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "yzhang.markdown-all-in-one"
+      ]
+    }
+  },
+  "remoteEnv": {
+    "OPENAI_API_KEY_FILE": "/run/secrets/openai.key",
+    "ANTHROPIC_API_KEY_FILE": "/run/secrets/anthropic.key",
+    "GEMINI_API_KEY_FILE": "/run/secrets/gemini.key",
+    "OPENROUTER_API_KEY_FILE": "/run/secrets/openrouter.key"
+  }
+}

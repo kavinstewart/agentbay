@@ -1,0 +1,24 @@
+{
+  "stability_polls": 3,
+  "idle_patterns": [
+    "Codex CLI ready",
+    "^>>> ",
+    "\\(codex\\) \\$ $"
+  ],
+  "busy_patterns": [
+    "\\.\\.\\.$",
+    "Running command",
+    "Processing request"
+  ],
+  "needs_confirmation_patterns": [
+    "Allow\\? \\(y/N\\)",
+    "Press ENTER to continue",
+    "Approval required"
+  ],
+  "error_patterns": [
+    "Traceback",
+    "Exception:",
+    "ERROR",
+    "Command failed"
+  ]
+}

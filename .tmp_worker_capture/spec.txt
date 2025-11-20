@@ -1,0 +1,1 @@
+Add a '## Smoke Test' heading with a placeholder sentence explaining it covers quick validation.

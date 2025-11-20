@@ -1,0 +1,16 @@
+{
+  "name": "Ideation Beads Workspace",
+  "image": "mcr.microsoft.com/devcontainers/base:debian",
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {},
+    "ghcr.io/devcontainers/features/node:1": { "version": "20" },
+    "ghcr.io/devcontainers/features/python:1": { "version": "3.11" },
+    "ghcr.io/devcontainers/features/go:1": { "version": "1.24" }
+  },
+  "remoteUser": "vscode",
+  "runArgs": ["--env-file", ".devcontainer/local.env"],
+  "postCreateCommand": "bash .devcontainer/setup-bd.sh",
+  "customizations": {
+    "vscode": { "extensions": ["yzhang.markdown-all-in-one"] }
+  }
+}

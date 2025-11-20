@@ -1,0 +1,1 @@
+Add a '## Smoke Test' heading to design.md with a single placeholder sentence explaining it covers quick validation.
