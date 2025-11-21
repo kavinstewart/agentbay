@@ -162,9 +162,23 @@ class OpenRouterClassifier:
         if self._session is None:
             self._session = requests.Session()
         prompt = (
-            "You read tmux pane text for a CLI worker.\n"
-            "Classify it as READY, BUSY, NEEDS_CONFIRMATION, or ERROR.\n"
-            "Respond with JSON {\"state\": str, \"summary\": str, \"actions_needed\": str|null}."
+            "You read tmux pane text for a CLI worker. Infer the PTY state using four axes plus metadata.\n"
+            "Return strict JSON matching:\n"
+            "{\n"
+            '  "session_lifecycle": "<DISCONNECTED|LOGIN_OR_SETUP|ACTIVE_SESSION|TEARDOWN>",\n'
+            '  "terminal_mode": "<CANONICAL|RAW|UNKNOWN>",\n'
+            '  "foreground_role": "<SHELL|CHILD_COMMAND|MULTIPLEXER|UNKNOWN>",\n'
+            '  "io_disposition": "<IDLE_AT_PROMPT|STREAMING_OUTPUT|SILENT_PROCESSING|BLOCKED_ON_INPUT|INTERRUPTIBLE_BUSY|UNKNOWN>",\n'
+            '  "error_recent": true,\n'
+            '  "summary": "<short string>",\n'
+            '  "actions_needed": "<string or null>"\n'
+            "}\n"
+            "Axis definitions:\n"
+            "1. session_lifecycle: DISCONNECTED (pane closed), LOGIN_OR_SETUP (ssh/login banners before shell), ACTIVE_SESSION (shell or process running), TEARDOWN (logout/shutdown).\n"
+            "2. terminal_mode: CANONICAL (line-buffered shell), RAW (application controls keys / alternate screen), UNKNOWN.\n"
+            "3. foreground_role: SHELL (bash/zsh prompt owns tty), CHILD_COMMAND (non-shell program), MULTIPLEXER (tmux/screen hosting another shell), UNKNOWN.\n"
+            "4. io_disposition: IDLE_AT_PROMPT (prompt visible, safe to send command), STREAMING_OUTPUT (logs/progress flowing), SILENT_PROCESSING (command running quietly), BLOCKED_ON_INPUT (explicit prompt waiting for y/N/password/etc.), INTERRUPTIBLE_BUSY (async REPLs like Codex that keep processing yet accept new instructions), UNKNOWN.\n"
+            "error_recent indicates whether the last command clearly failed (traceback, non-zero exit). Provide a concise summary and optional actions_needed instruction."
         )
         payload = {
             "model": self.model,
