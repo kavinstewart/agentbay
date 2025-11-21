@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from dotenv import load_dotenv
+from pydantic import Field
 from pydantic_settings import BaseSettings
+
+load_dotenv()
 
 
 class Settings(BaseSettings):
@@ -23,8 +27,8 @@ class Settings(BaseSettings):
     watcher_default_stability: int = 3
     classifier_packs_dir: Path = Path("design/classifier_packs")
     default_cli_type: str = "codex"
-    openrouter_api_key: str | None = None
-    openrouter_model: str = "openrouter/auto"
+    openrouter_api_key: str | None = Field(default=None, validation_alias="OPENROUTER_API_KEY")
+    openrouter_model: str = Field(default="openrouter/auto", validation_alias="OPENROUTER_MODEL")
 
     class Config:
         env_file = ".env"

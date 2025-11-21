@@ -168,7 +168,7 @@ class OpenRouterClassifier:
         )
         payload = {
             "model": self.model,
-            "input": [
+            "messages": [
                 {
                     "role": "system",
                     "content": prompt,
@@ -511,4 +511,3 @@ class PtyWatcher:
 
 def strip_ansi(text: str) -> str:
     return ANSI_ESCAPE_RE.sub("", text)
-
