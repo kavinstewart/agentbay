@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Iterable, Iterator
 
 from app.config import settings
+from app.services.terminal_emulator import TerminalDimensions, TerminalEmulator
 
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
@@ -27,6 +28,12 @@ class WorkerMetadata:
 
 
 @dataclass
+class PaneSnapshot:
+    raw_text: str
+    rendered_text: str
+
+
+@dataclass
 class PaneInfo:
     pane_id: str
     session_name: str
@@ -34,6 +41,8 @@ class PaneInfo:
     pane_index: str
     cwd: Path
     title: str
+    width: int
+    height: int
 
     @property
     def target(self) -> str:
@@ -42,7 +51,8 @@ class PaneInfo:
 
 @dataclass
 class PaneState:
-    last_snapshot_hash: str | None = None
+    last_raw_hash: str | None = None
+    last_rendered_hash: str | None = None
     last_classified_hash: str | None = None
     stable_count: int = 0
     last_change_ts: float = field(default_factory=lambda: time.time())
@@ -356,6 +366,7 @@ class PtyWatcher:
         self.state: dict[str, PaneState] = {}
         self._classifiers: dict[str, HybridClassifier] = {}
         self.status_store = StatusStore(settings.status_db_path)
+        self._emulators: dict[str, TerminalEmulator] = {}
 
     async def run(self) -> None:
         logging.info("Starting PTY watcher loop (interval=%ss)", self.interval)
@@ -386,15 +397,16 @@ class PtyWatcher:
             del self.state[pane_id]
 
     async def _process_pane(self, pane: PaneInfo, worker: WorkerMetadata, ts: float) -> None:
-        text = self._capture_pane_text(pane)
-        stripped = strip_ansi(text)
-        snapshot_hash = sha256(stripped.encode("utf-8")).hexdigest()
+        snapshot = self._capture_pane_snapshot(pane)
+        raw_hash = sha256(snapshot.raw_text.encode("utf-8")).hexdigest()
+        rendered_hash = sha256(snapshot.rendered_text.encode("utf-8")).hexdigest()
         pane_state = self.state.setdefault(
             pane.pane_id,
             PaneState(threshold=self._classifier_for(worker.cli_type).pack.stability_polls),
         )
-        if pane_state.last_snapshot_hash != snapshot_hash:
-            pane_state.last_snapshot_hash = snapshot_hash
+        if pane_state.last_raw_hash != raw_hash:
+            pane_state.last_raw_hash = raw_hash
+            pane_state.last_rendered_hash = rendered_hash
             pane_state.stable_count = 0
             pane_state.last_change_ts = ts
             pane_state.state = "BUSY"
@@ -403,10 +415,13 @@ class PtyWatcher:
         else:
             pane_state.stable_count += 1
             threshold = pane_state.threshold or settings.watcher_default_stability
-            if pane_state.stable_count >= threshold and pane_state.last_classified_hash != snapshot_hash:
+            if (
+                pane_state.stable_count >= threshold
+                and pane_state.last_classified_hash != rendered_hash
+            ):
                 classifier = self._classifier_for(worker.cli_type)
                 result = classifier.classify(
-                    stripped,
+                    snapshot.rendered_text,
                     {
                         "worker_id": worker.worker_id,
                         "pane_id": pane.pane_id,
@@ -416,15 +431,15 @@ class PtyWatcher:
                 pane_state.state = result.state
                 pane_state.summary = result.summary
                 pane_state.actions_needed = result.actions_needed
-                pane_state.last_classified_hash = snapshot_hash
-        self._write_status(worker, pane, pane_state, snapshot_hash, ts)
+                pane_state.last_classified_hash = rendered_hash
+        self._write_status(worker, pane, pane_state, rendered_hash, ts)
 
     def _write_status(
         self,
         worker: WorkerMetadata,
         pane: PaneInfo,
         pane_state: PaneState,
-        snapshot_hash: str,
+        rendered_hash: str,
         ts: float,
     ) -> None:
         status_payload = {
@@ -440,7 +455,7 @@ class PtyWatcher:
         }
         status_path = worker.workspace / "status.json"
         status_path.write_text(json.dumps(status_payload, indent=2), encoding="utf-8")
-        self.status_store.upsert(pane, worker, pane_state, snapshot_hash, ts)
+        self.status_store.upsert(pane, worker, pane_state, rendered_hash, ts)
 
     def _classifier_for(self, cli_type: str) -> HybridClassifier:
         classifier = self._classifiers.get(cli_type)
@@ -450,21 +465,37 @@ class PtyWatcher:
             self._classifiers[cli_type] = classifier
         return classifier
 
-    def _capture_pane_text(self, pane: PaneInfo) -> str:
+    def _capture_pane_snapshot(self, pane: PaneInfo) -> PaneSnapshot:
         try:
             result = subprocess.run(
-                [self.tmux_bin, "capture-pane", "-pJ", "-t", pane.target],
+                [self.tmux_bin, "capture-pane", "-peJ", "-t", pane.target],
                 check=True,
                 capture_output=True,
                 text=True,
             )
-            return result.stdout
+            raw_text = result.stdout
         except subprocess.CalledProcessError as exc:
             logging.error("tmux capture-pane failed for %s: %s", pane.target, exc)
-            return ""
+            raw_text = ""
+        emulator = self._emulators.get(pane.pane_id)
+        if (
+            emulator is None
+            or emulator.dimensions.width != pane.width
+            or emulator.dimensions.height != pane.height
+        ):
+            emulator = TerminalEmulator(TerminalDimensions(pane.width, pane.height))
+            self._emulators[pane.pane_id] = emulator
+        try:
+            rendered = emulator.render(raw_text)
+        except Exception:  # pragma: no cover
+            rendered = strip_ansi(raw_text)
+        return PaneSnapshot(raw_text=raw_text, rendered_text=rendered)
 
     def _list_tmux_panes(self) -> list[PaneInfo]:
-        format_str = "#{pane_id}\t#{session_name}\t#{window_index}\t#{pane_index}\t#{pane_current_path}\t#{pane_title}"
+        format_str = (
+            "#{pane_id}\t#{session_name}\t#{window_index}\t#{pane_index}\t#{pane_current_path}\t"
+            "#{pane_title}\t#{pane_width}\t#{pane_height}"
+        )
         try:
             result = subprocess.run(
                 [self.tmux_bin, "list-panes", "-a", "-F", format_str],
@@ -480,9 +511,9 @@ class PtyWatcher:
             if not line.strip():
                 continue
             parts = line.split("\t")
-            if len(parts) != 6:
+            if len(parts) != 8:
                 continue
-            pane_id, session, window_index, pane_index, cwd, title = parts
+            pane_id, session, window_index, pane_index, cwd, title, width, height = parts
             panes.append(
                 PaneInfo(
                     pane_id=pane_id.strip(),
@@ -491,6 +522,8 @@ class PtyWatcher:
                     pane_index=pane_index.strip(),
                     cwd=Path(cwd.strip() or "."),
                     title=title.strip(),
+                    width=int(width.strip() or 80),
+                    height=int(height.strip() or 24),
                 )
             )
         return panes
